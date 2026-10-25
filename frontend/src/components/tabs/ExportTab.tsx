@@ -1,9 +1,11 @@
 import { useMemo, useRef } from "react";
+import type { ChangeEvent } from "react";
 import { Copy, Download, Code2, Upload } from "lucide-react";
-import Button from "../ui/Button.jsx";
-import { useToast } from "../../state/ToastContext.jsx";
+import Button from "@/components/ui/Button";
+import { useToast } from "@/state/ToastContext";
+import type { MapStyle } from "@/lib/types";
 
-function buildEmbed(styleJson) {
+function buildEmbed(styleJson: string): string {
   return (
     `<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.0/dist/maplibre-gl.css" rel="stylesheet">` +
     `<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@5.3.0/dist/maplibre-gl.js"></script>` +
@@ -12,22 +14,27 @@ function buildEmbed(styleJson) {
   );
 }
 
-export default function ExportTab({ style, onImport }) {
+type ExportTabProps = {
+  style: MapStyle | null;
+  onImport?: (style: MapStyle, sourceName: string) => void;
+};
+
+export default function ExportTab({ style, onImport }: ExportTabProps) {
   const { push: toast } = useToast();
-  const fileRef = useRef(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const json = useMemo(() => (style ? JSON.stringify(style, null, 2) : ""), [style]);
 
-  async function copy(text, label) {
+  async function copy(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text);
       toast(`${label} copied`, "ok");
     } catch (e) {
-      toast("Copy failed: " + e.message, "err");
+      toast("Copy failed: " + (e instanceof Error ? e.message : String(e)), "err");
     }
   }
 
   function download() {
-    const name = (style && style.name) || "earthiq";
+    const name = (style && style.name) || "basemap";
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -42,23 +49,28 @@ export default function ExportTab({ style, onImport }) {
     fileRef.current?.click();
   }
 
-  async function onFile(e) {
+  async function onFile(e: ChangeEvent<HTMLInputElement>) {
     const input = e.target;
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
-    let parsed;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(await file.text());
     } catch {
       toast("That file is not valid JSON", "err");
       return;
     }
-    if (!parsed || typeof parsed !== "object" || !parsed.version || !Array.isArray(parsed.layers)) {
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !(parsed as Record<string, unknown>).version ||
+      !Array.isArray((parsed as Record<string, unknown>).layers)
+    ) {
       toast("Not a MapLibre style JSON (needs version + layers)", "err");
       return;
     }
-    onImport?.(parsed, file.name);
+    onImport?.(parsed as MapStyle, file.name);
   }
 
   return (
@@ -74,7 +86,12 @@ export default function ExportTab({ style, onImport }) {
             <Download size={14} />
             Download .json
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => copy(buildEmbed(json), "Embed snippet")} disabled={!json}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => copy(buildEmbed(json), "Embed snippet")}
+            disabled={!json}
+          >
             <Code2 size={14} />
             Copy MapLibre embed
           </Button>

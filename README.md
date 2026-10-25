@@ -1,6 +1,6 @@
-# ◈ EarthIQ · AI base map designer
+# ◈ EarthIQ Basemap · AI base map designer
 
-An **AI-powered base map designer**. Describe the map you want in plain English and
+An **AI base map designer by EarthIQ**. Describe the map you want in plain English and
 an LLM agent edits a live **MapLibre GL style** for you, recolouring the whole map
 with curated palettes, tweaking individual layers, toggling visibility, adjusting
 road/label styling, and more. You can also design by hand in the Inspector.
@@ -41,7 +41,7 @@ LM Studio, …).
 - **LLM adapters** (`server/llm.py`): Ollama (`/api/chat`, NDJSON streaming + tool calls)
   and OpenAI-compatible (`/chat/completions` + tools), behind one streaming interface
   that yields text token-by-token.
-- **Frontend** (`frontend/`): a React 19 + Vite single-page app styled with
+- **Frontend** (`frontend/`): a React 19 + TypeScript + Vite single-page app styled with
   **Tailwind CSS v4** and **lucide-react** icons, rendering the live map with
   **MapLibre GL**. Assistant replies stream in token-by-token and every tool call
   is shown as a live status chip, so you can see exactly what the agent is doing.
@@ -57,17 +57,23 @@ server/
   settings.py   defaults & runtime configuration
 frontend/
   index.html    Vite entry
-  vite.config.js  Vite + React + Tailwind v4 plugins, dev /api proxy
+  vite.config.ts    Vite + React + Tailwind v4 plugins, dev /api proxy
+  tsconfig.json     TypeScript config (strict)
   src/
-    main.jsx        React entry
-    App.jsx         app shell: state, map, provider/model, tab routing
+    main.tsx        React entry
+    App.tsx         app shell: state, map, provider/model, tab routing
     index.css       Tailwind v4 theme + MapLibre control theming
-    lib/            api + SSE client, MapLibre helpers, utils
+    lib/            typed API + SSE client, MapLibre helpers, utils, shared types
     state/          Toast context
     components/     Header, SettingsPanel, MapView, Sidebar, QuickPrompts
       chat/         AITab (streaming chat) + Turn (live block timeline)
       tabs/         Palettes, Inspector, Export
     dist/           built app (gitignored; produced by `npm run build`)
+pyproject.toml  Python project (deps + tooling, managed by uv)
+uv.lock         locked Python dependency graph (reproducible installs)
+Dockerfile      multi-stage build: Node frontend → Python runtime
+docker-compose.yml  one-command local stack (docker compose up)
+LICENSE         Apache 2.0
 data/styles/    cached OpenFreeMap style JSONs (auto-filled on first run)
 run.sh          one-command launcher (builds the frontend on demand)
 ```
@@ -90,15 +96,49 @@ cd basemaps
 ./run.sh                 # builds the frontend if needed → http://127.0.0.1:8000
 ./run.sh --dev           # dev: Vite hot-reload on :5173 + API on :8000
 # or manually:
-uv venv --python 3.12 .venv
-uv pip install -r requirements.txt --python .venv/bin/python
-cd frontend && npm install && npm run build && cd ..
-.venv/bin/python -m uvicorn server.main:app --host 127.0.0.1 --port 8000
+uv sync                                      # venv + deps from uv.lock
+cd frontend && npm ci && npm run build && cd ..
+uv run uvicorn server.main:app --host 127.0.0.1 --port 8000
 ```
 
 Open **http://127.0.0.1:8000**. Pick the base map and engine up top, then start
 describing the map you want in the **AI** tab. In development, use
 **http://127.0.0.1:5173** (the Vite dev server proxies `/api` to the backend).
+
+### Frontend tooling
+
+From `frontend/`:
+
+```bash
+npm run lint            # oxlint
+npm run format          # oxfmt (write)
+npm run format:check    # oxfmt (CI check)
+npm run build           # tsc --noEmit && vite build
+```
+
+### Docker
+
+Prefer containers? The multi-stage `Dockerfile` builds the frontend and the
+Python runtime into one image:
+
+```bash
+docker compose up --build    # → http://127.0.0.1:8000
+# or manually:
+docker build -t basemap .
+docker run --rm -p 8000:8000 basemap
+```
+
+`docker-compose.yml` wires up the common knobs (all optional):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11444` | Ollama running on the Docker host |
+| `EARTHIQ_OLLAMA_MODEL` | `qwen3.8:27b` | Default Ollama model |
+| `EARTHIQ_TILE_BASE_URL` | `https://tiles.openfreemap.org` | OpenFreeMap tile/style server |
+| `EARTHIQ_CORS_ORIGINS` | _(empty)_ | Extra origins, only needed if the UI lives elsewhere |
+
+For an OpenAI-compatible provider instead of Ollama, set `OPENAI_BASE_URL`,
+`OPENAI_API_KEY`, `OPENAI_MODEL` (see `server/settings.py`).
 
 ## Using it
 
@@ -177,6 +217,7 @@ EarthIQ re-points the sprite/glyph/source URLs automatically.
 
 ## License & attribution
 
-EarthIQ is MIT. Map data © OpenStreetMap contributors; tiles & styles © OpenFreeMap
+EarthIQ Basemap is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)).
+Map data © OpenStreetMap contributors; tiles & styles © OpenFreeMap
 (© OpenMapTiles). When using in print/video, include:
 `OpenFreeMap © OpenMapTiles · Data from OpenStreetMap`.

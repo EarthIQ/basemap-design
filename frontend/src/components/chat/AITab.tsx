@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Send, Square, Eraser } from "lucide-react";
-import Button from "../ui/Button.jsx";
-import Turn from "./Turn.jsx";
-import { streamChat } from "../../lib/api";
-import { uid } from "../../lib/utils";
-import { useToast } from "../../state/ToastContext.jsx";
+import Button from "@/components/ui/Button";
+import Turn from "@/components/chat/Turn";
+import { streamChat } from "@/lib/api";
+import { uid } from "@/lib/utils";
+import { useToast } from "@/state/ToastContext";
+import type { MapAction, SSEEvent, ToolResult, Turn as TurnType, TurnPart } from "@/lib/types";
 
-const WELCOME = {
+const WELCOME: TurnType = {
   id: "welcome",
   role: "assistant",
   status: "done",
@@ -14,10 +16,17 @@ const WELCOME = {
     {
       id: "welcome-text",
       kind: "text",
-      content:
-        "Hi! I design base maps for you on top of OpenFreeMap vector data.",
+      content: "Hi! I design base maps for you on top of OpenFreeMap vector data.",
     },
   ],
+};
+
+type AITabProps = {
+  provider: string;
+  model: string;
+  applyAndSync: (actions: MapAction[]) => void;
+  refreshStyle: () => void;
+  onRegisterSend?: (fn: (text: string) => void) => void;
 };
 
 export default function AITab({
@@ -26,13 +35,13 @@ export default function AITab({
   applyAndSync,
   refreshStyle,
   onRegisterSend,
-}) {
-  const [messages, setMessages] = useState([WELCOME]);
+}: AITabProps) {
+  const [messages, setMessages] = useState<TurnType[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const { push: toast } = useToast();
-  const scrollRef = useRef(null);
-  const controllerRef = useRef(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const controllerRef = useRef<AbortController | null>(null);
 
   // Keep the chat pinned to the latest block as the stream updates.
   useEffect(() => {
@@ -40,12 +49,12 @@ export default function AITab({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  const updateTurn = useCallback((id, updater) => {
+  const updateTurn = useCallback((id: string, updater: (t: TurnType) => TurnType) => {
     setMessages((msgs) => msgs.map((m) => (m.id === id ? updater(m) : m)));
   }, []);
 
   const sendPrompt = useCallback(
-    async (text) => {
+    async (text: string) => {
       const message = (text || "").trim();
       if (!message) return;
 
@@ -54,7 +63,7 @@ export default function AITab({
       setBusy(true);
       setInput("");
 
-      const userMsg = { id: uid("msg"), role: "user", text: message };
+      const userMsg: TurnType = { id: uid("msg"), role: "user", text: message };
       const turnId = uid("turn");
       setMessages((m) => [
         ...m,
@@ -62,11 +71,11 @@ export default function AITab({
         { id: turnId, role: "assistant", status: "running", parts: [] },
       ]);
 
-      const addPart = (part) =>
-        updateTurn(turnId, (t) => ({ ...t, parts: [...t.parts, part] }));
-      const appendText = (delta) =>
+      const addPart = (part: TurnPart) =>
+        updateTurn(turnId, (t) => ({ ...t, parts: [...(t.parts || []), part] }));
+      const appendText = (delta: string) =>
         updateTurn(turnId, (t) => {
-          const parts = [...t.parts];
+          const parts = [...(t.parts || [])];
           const last = parts[parts.length - 1];
           if (last && last.kind === "text") {
             parts[parts.length - 1] = { ...last, content: last.content + delta };
@@ -75,15 +84,16 @@ export default function AITab({
           }
           return { ...t, parts };
         });
-      const finishLastTool = (ev) =>
+      const finishLastTool = (ev: Extract<SSEEvent, { type: "tool_result" }>) =>
         updateTurn(turnId, (t) => {
-          const parts = [...t.parts];
+          const parts = [...(t.parts || [])];
           for (let i = parts.length - 1; i >= 0; i--) {
-            if (parts[i].kind === "tool" && parts[i].status === "running") {
+            const p = parts[i];
+            if (p.kind === "tool" && p.status === "running") {
               parts[i] = {
-                ...parts[i],
+                ...p,
                 status: ev.result && ev.result.ok !== false ? "done" : "fail",
-                result: ev.result,
+                result: ev.result as ToolResult,
               };
               break;
             }
@@ -104,10 +114,10 @@ export default function AITab({
             case "assistant":
               updateTurn(turnId, (t) => {
                 if (!ev.content) return t;
-                if (t.parts.some((p) => p.kind === "text")) return t;
+                if ((t.parts || []).some((p) => p.kind === "text")) return t;
                 return {
                   ...t,
-                  parts: [...t.parts, { id: uid("b"), kind: "text", content: ev.content }],
+                  parts: [...(t.parts || []), { id: uid("b"), kind: "text", content: ev.content }],
                 };
               });
               break;
@@ -118,7 +128,6 @@ export default function AITab({
                 name: ev.name,
                 args: ev.arguments,
                 status: "running",
-                result: null,
               });
               break;
             case "tool_result":
@@ -129,7 +138,7 @@ export default function AITab({
               updateTurn(turnId, (t) => ({
                 ...t,
                 status: "error",
-                parts: [...t.parts, { id: uid("b"), kind: "error", message: ev.message }],
+                parts: [...(t.parts || []), { id: uid("b"), kind: "error", message: ev.message }],
               }));
               break;
             case "done":
@@ -141,24 +150,23 @@ export default function AITab({
           }
         }
 
-        updateTurn(turnId, (t) =>
-          t.status === "running" ? { ...t, status: "done" } : t
-        );
+        updateTurn(turnId, (t) => (t.status === "running" ? { ...t, status: "done" } : t));
       } catch (e) {
         if (abort.signal.aborted) {
           updateTurn(turnId, (t) => ({ ...t, status: "done" }));
         } else {
+          const msg = e instanceof Error ? e.message : String(e);
           updateTurn(turnId, (t) => ({
             ...t,
             status: "error",
-            parts: [...t.parts, { id: uid("b"), kind: "error", message: e.message }],
+            parts: [...(t.parts || []), { id: uid("b"), kind: "error", message: msg }],
           }));
         }
       } finally {
         setBusy(false);
       }
     },
-    [provider, model, updateTurn, applyAndSync, refreshStyle]
+    [provider, model, updateTurn, applyAndSync, refreshStyle],
   );
 
   // Expose sendPrompt so quick prompts (on the map) can trigger a chat.
@@ -178,7 +186,7 @@ export default function AITab({
     toast("Chat cleared", "ok");
   }
 
-  function onKeyDown(e) {
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendPrompt(input);
@@ -214,7 +222,7 @@ export default function AITab({
             </div>
           ) : (
             <Turn key={m.id} turn={m} />
-          )
+          ),
         )}
       </div>
 
@@ -229,13 +237,7 @@ export default function AITab({
             className="max-h-40 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-ink-100 outline-none placeholder:text-ink-500"
           />
           {busy ? (
-            <Button
-              variant="default"
-              size="sm"
-              className="p-2!"
-              onClick={stop}
-              title="Stop"
-            >
+            <Button variant="default" size="sm" className="p-2!" onClick={stop} title="Stop">
               <Square size={15} />
             </Button>
           ) : (
@@ -251,7 +253,9 @@ export default function AITab({
             </Button>
           )}
         </div>
-        <p className="mt-1.5 px-1 text-[11px] text-ink-500">Enter to send · Shift+Enter for a new line</p>
+        <p className="mt-1.5 px-1 text-[11px] text-ink-500">
+          Enter to send · Shift+Enter for a new line
+        </p>
       </div>
     </div>
   );

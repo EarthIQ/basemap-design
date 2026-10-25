@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
-# EarthIQ · AI base map designer. Starts the local server on http://127.0.0.1:8000
+# EarthIQ Basemap · AI base map designer. Starts the local server on http://127.0.0.1:8000
 set -e
 cd "$(dirname "$0")"
 
 # ---------------------------------------------------------------------------
-# Python backend
+# uv (Python package manager)
 # ---------------------------------------------------------------------------
-if [ ! -d .venv ]; then
-  echo "Creating virtualenv + installing dependencies…"
-  uv venv --python 3.12 .venv
-  uv pip install -r requirements.txt --python .venv/bin/python
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv not found - installing…"
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
 fi
+
+# ---------------------------------------------------------------------------
+# Python backend (uv project, locked in uv.lock)
+# ---------------------------------------------------------------------------
+uv sync
 
 # ---------------------------------------------------------------------------
 # React frontend (built to frontend/dist, served by the backend)
@@ -44,5 +49,5 @@ build_frontend
 
 PORT="${PORT:-8000}"
 HOST="${HOST:-127.0.0.1}"
-echo "EarthIQ starting on http://$HOST:$PORT"
+echo "EarthIQ Basemap starting on http://$HOST:$PORT"
 exec .venv/bin/python -m uvicorn server.main:app --host "$HOST" --port "$PORT"

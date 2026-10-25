@@ -506,7 +506,7 @@ def tool_load_preset(style, args):
         return {"ok": False, "error": f"'{name}' is not a base style.",
                 "baseStyles": settings.BASE_STYLES}, []
     new = styles.resolve_style(name, settings.TILE_BASE_URL)
-    new["name"] = f"earthiq:{name}"
+    new["name"] = f"basemap:{name}"
     style.clear()
     style.update(new)
     return {"ok": True, "loaded": name, "layers": len(style.get("layers", []))}, \
@@ -914,7 +914,7 @@ TOOLS.extend(
 )
 
 
-SYSTEM_PROMPT = """You are EarthIQ, an expert cartographer and base-map design assistant.
+SYSTEM_PROMPT = """You are EarthIQ Basemap, an expert cartographer and base-map design assistant.
 
 The design target is a live MapLibre GL style rendered on OpenFreeMap vector
 tiles (OpenStreetMap / OpenMapTiles schema). You change the design by calling

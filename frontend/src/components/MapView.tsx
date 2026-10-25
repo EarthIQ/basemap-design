@@ -1,15 +1,24 @@
 import { useEffect, useRef } from "react";
 import { Map as MapIcon } from "lucide-react";
-import { createMap } from "../lib/maplibre";
-import QuickPrompts from "./QuickPrompts.jsx";
+import type { Map as MapLibreMap } from "maplibre-gl";
+import { createMap } from "@/lib/maplibre";
+import type { MapStyle } from "@/lib/types";
+import QuickPrompts from "@/components/QuickPrompts";
+
+type MapViewProps = {
+  initialStyle: MapStyle;
+  onMap?: (map: MapLibreMap) => void;
+  styleName?: string;
+  onQuick?: (prompt: string) => void;
+};
 
 /**
  * Owns the MapLibre map instance for the lifetime of the component.
  * `initialStyle` must be non-null on first mount (App gates rendering on load).
  */
-export default function MapView({ initialStyle, onMap, styleName, onQuick }) {
-  const containerRef = useRef(null);
-  const mapRef = useRef(null);
+export default function MapView({ initialStyle, onMap, styleName, onQuick }: MapViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
 
   useEffect(() => {
     if (!containerRef.current || !initialStyle) return;
@@ -31,9 +40,7 @@ export default function MapView({ initialStyle, onMap, styleName, onQuick }) {
       {/* Current style badge */}
       <div className="pointer-events-none absolute left-3 top-3 z-[5] flex items-center gap-2 rounded-lg border border-line bg-ink-900/80 px-3 py-1.5 text-xs text-ink-300 backdrop-blur">
         <MapIcon size={14} className="text-glow" />
-        <span className="max-w-[180px] truncate font-medium text-ink-200">
-          {styleName || "…"}
-        </span>
+        <span className="max-w-[180px] truncate font-medium text-ink-200">{styleName || "…"}</span>
       </div>
 
       <QuickPrompts onQuick={onQuick} />

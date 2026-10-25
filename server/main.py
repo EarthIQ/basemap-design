@@ -1,9 +1,10 @@
-"""EarthIQ server: FastAPI app wiring the agent, design engine and UI together."""
+"""EarthIQ Basemap server: FastAPI app wiring the agent, design engine and UI together."""
 from __future__ import annotations
 
 import json
-import threading
+import os
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,10 +14,34 @@ from pydantic import BaseModel
 
 from . import agent, design, llm, settings, styles
 
-app = FastAPI(title="EarthIQ - AI base map designer", version="0.1.0")
+app = FastAPI(title="EarthIQ Basemap - AI base map designer by EarthIQ", version="0.1.0")
+
+
+def _cors_origins() -> list[str]:
+    """CORS allow-list.
+
+    EarthIQ Basemap is a single-user local tool, so we deliberately do not use
+    ``allow_origins=["*"]``: any website open in the browser could otherwise
+    read or change the server's settings (provider, base URL, API key).
+    Override with a comma-separated list via EARTHIQ_CORS_ORIGINS.
+    """
+    raw = os.environ.get("EARTHIQ_CORS_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    if origins:
+        return origins
+    return [
+        "http://127.0.0.1:5173",  # Vite dev server
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",  # the app itself
+        "http://localhost:8000",
+    ]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    allow_origins=_cors_origins(),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Accept"],
 )
 
 # Runtime, user-overridable provider choice (set by /api/settings).
@@ -25,15 +50,16 @@ DEFAULT_BASE_STYLE = "positron"
 
 # ---------------------------------------------------------------------------
 # Session state (single-user local tool) - the style is the source of truth.
+# The shared lock is defined in settings.py so the agent loop can use it too.
 # ---------------------------------------------------------------------------
-_SESSION_LOCK = threading.Lock()
+_SESSION_LOCK = settings.SESSION_LOCK
 _SESSION: dict[str, Any] = {"style": {}, "history": [], "name": None}
 
 
 def _init_session(base_style: str = DEFAULT_BASE_STYLE) -> None:
     try:
         style = styles.resolve_style(base_style, settings.TILE_BASE_URL)
-        style["name"] = f"earthiq:{base_style}"
+        style["name"] = f"basemap:{base_style}"
     except Exception:
         style = _minimal_style()
         base_style = "minimal"
@@ -46,7 +72,7 @@ def _minimal_style() -> dict[str, Any]:
     base = settings.TILE_BASE_URL.rstrip("/")
     return {
         "version": 8,
-        "name": "earthiq:minimal",
+        "name": "basemap:minimal",
         "sources": {
             "openmaptiles": {
                 "type": "vector",
@@ -122,6 +148,14 @@ def _apply_provider_override(provider: str | None, model: str | None) -> None:
             settings.OPENAI_MODEL = model
 
 
+def _valid_base_url(value: str) -> str | None:
+    """Return the value as a normalised http(s) URL, or None if it is not one."""
+    parts = urlparse(value.strip())
+    if parts.scheme in ("http", "https") and parts.netloc:
+        return value.strip().rstrip("/")
+    return None
+
+
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -194,17 +228,26 @@ def set_settings(body: SettingsIn) -> dict:
     if norm:
         settings.CURRENT_PROVIDER = norm
     if body.ollamaBaseUrl:
-        settings.OLLAMA_BASE_URL = body.ollamaBaseUrl.rstrip("/")
+        url = _valid_base_url(body.ollamaBaseUrl)
+        if not url:
+            raise HTTPException(400, "ollamaBaseUrl must be a valid http(s) URL.")
+        settings.OLLAMA_BASE_URL = url
     if body.ollamaModel:
         settings.DEFAULT_OLLAMA_MODEL = body.ollamaModel
     if body.openaiBaseUrl:
-        settings.OPENAI_BASE_URL = body.openaiBaseUrl.rstrip("/")
+        url = _valid_base_url(body.openaiBaseUrl)
+        if not url:
+            raise HTTPException(400, "openaiBaseUrl must be a valid http(s) URL.")
+        settings.OPENAI_BASE_URL = url
     if body.openaiModel:
         settings.OPENAI_MODEL = body.openaiModel
     if body.openaiApiKey is not None:
         settings.OPENAI_API_KEY = body.openaiApiKey
     if body.tileBaseUrl:
-        settings.TILE_BASE_URL = body.tileBaseUrl.rstrip("/")
+        url = _valid_base_url(body.tileBaseUrl)
+        if not url:
+            raise HTTPException(400, "tileBaseUrl must be a valid http(s) URL.")
+        settings.TILE_BASE_URL = url
         with _SESSION_LOCK:
             _repaint_domains()
     return get_settings()
@@ -243,7 +286,7 @@ def load_session(body: LoadIn) -> dict:
         raise HTTPException(400, f"Unknown base style '{body.name}'.")
     with _SESSION_LOCK:
         new = styles.resolve_style(body.name, settings.TILE_BASE_URL)
-        new["name"] = f"earthiq:{body.name}"
+        new["name"] = f"basemap:{body.name}"
         _SESSION["style"] = new
         _SESSION["history"] = []
         _SESSION["name"] = body.name
@@ -261,7 +304,7 @@ def import_session(body: ImportIn) -> dict:
         )
     name = (body.name or "imported").strip() or "imported"
     with _SESSION_LOCK:
-        style["name"] = f"earthiq:{name}"
+        style["name"] = f"basemap:{name}"
         _SESSION["style"] = style
         _SESSION["history"] = []
         _SESSION["name"] = name
@@ -327,6 +370,8 @@ def chat_endpoint(body: ChatIn):
 @app.post("/api/session/reset")
 def reset_session(body: LoadIn | None = None) -> dict:
     name = body.name if body and body.name else DEFAULT_BASE_STYLE
+    if name not in settings.BASE_STYLES:
+        raise HTTPException(400, f"Unknown base style '{name}'.")
     with _SESSION_LOCK:
         _init_session(name)
     return {"ok": True, "name": _SESSION.get("name")}
@@ -340,7 +385,7 @@ _DIST = settings.WEB_DIR
 
 def _frontend_not_built() -> dict:
     return {
-        "name": "EarthIQ",
+        "name": "EarthIQ Basemap",
         "message": (
             "The frontend build was not found. Run "
             "`cd frontend && npm install && npm run build`, then reload."
@@ -376,7 +421,7 @@ def spa_fallback(path: str):
         return JSONResponse(_frontend_not_built(), status_code=503)
     candidate = (_DIST / path).resolve()
     # Prevent path traversal outside the dist directory.
-    if candidate.is_file() and str(candidate).startswith(str(_DIST.resolve())):
+    if candidate.is_file() and candidate.is_relative_to(_DIST.resolve()):
         return FileResponse(str(candidate))
     return FileResponse(str(_DIST / "index.html"))
 

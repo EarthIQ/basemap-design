@@ -1,39 +1,50 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { CheckCircle2, XCircle, Info, X } from "lucide-react";
-import { cn, uid } from "../lib/utils";
+import type { LucideIcon } from "lucide-react";
+import { cn, uid } from "@/lib/utils";
 
-const ToastContext = createContext({ push: () => {} });
+type ToastKind = "ok" | "err" | "info";
 
-const ICONS = {
+type Toast = { id: string; message: string; kind: ToastKind };
+
+type ToastApi = {
+  push: (message: string, kind?: ToastKind, ttl?: number) => string;
+  dismiss: (id: string) => void;
+};
+
+const ToastContext = createContext<ToastApi>({ push: () => "", dismiss: () => {} });
+
+const ICONS: Record<ToastKind, LucideIcon> = {
   ok: CheckCircle2,
   err: XCircle,
   info: Info,
 };
 
-const ACCENTS = {
+const ACCENTS: Record<ToastKind, string> = {
   ok: "border-emerald-500/50 text-emerald-300",
   err: "border-rose-500/50 text-rose-300",
   info: "border-sky-500/50 text-sky-300",
 };
 
-export function ToastProvider({ children }) {
-  const [toasts, setToasts] = useState([]);
-  const timers = useRef({});
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  const dismiss = useCallback((id) => {
+  const dismiss = useCallback((id: string) => {
     setToasts((t) => t.filter((x) => x.id !== id));
     clearTimeout(timers.current[id]);
     delete timers.current[id];
   }, []);
 
   const push = useCallback(
-    (message, kind = "info", ttl = 3000) => {
+    (message: string, kind: ToastKind = "info", ttl = 3000) => {
       const id = uid("toast");
       setToasts((t) => [...t, { id, message, kind }]);
       timers.current[id] = setTimeout(() => dismiss(id), ttl);
       return id;
     },
-    [dismiss]
+    [dismiss],
   );
 
   const value = useMemo(() => ({ push, dismiss }), [push, dismiss]);
@@ -49,7 +60,7 @@ export function ToastProvider({ children }) {
               key={t.id}
               className={cn(
                 "pointer-events-auto flex w-full items-start gap-3 rounded-xl border bg-zinc-900/95 px-4 py-3 shadow-lg shadow-black/40 backdrop-blur",
-                ACCENTS[t.kind] || ACCENTS.info
+                ACCENTS[t.kind] || ACCENTS.info,
               )}
             >
               <Icon size={18} className="mt-0.5 shrink-0" />
@@ -69,6 +80,6 @@ export function ToastProvider({ children }) {
   );
 }
 
-export function useToast() {
+export function useToast(): ToastApi {
   return useContext(ToastContext);
 }

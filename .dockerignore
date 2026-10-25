@@ -1,0 +1,24 @@
+# VCS
+.git
+.gitignore
+
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+
+# Node / frontend build artifacts (rebuilt in the image)
+node_modules
+frontend/node_modules
+frontend/dist
+
+# Local runtime data & secrets
+data
+.env
+*.env
+
+# Local-only files
+Dockerfile
+docker-compose.yml
+.dockerignore

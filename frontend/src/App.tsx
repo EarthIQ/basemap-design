@@ -1,82 +1,105 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Compass } from "lucide-react";
-import { api } from "./lib/api";
-import { applyActions } from "./lib/maplibre";
-import { useToast } from "./state/ToastContext.jsx";
-import Header from "./components/Header.jsx";
-import SettingsPanel from "./components/SettingsPanel.jsx";
-import MapView from "./components/MapView.jsx";
-import Sidebar from "./components/Sidebar.jsx";
-import AITab from "./components/chat/AITab.jsx";
-import PalettesTab from "./components/tabs/PalettesTab.jsx";
-import InspectorTab from "./components/tabs/InspectorTab.jsx";
-import ExportTab from "./components/tabs/ExportTab.jsx";
+import type { Map as MapLibreMap } from "maplibre-gl";
+import { api } from "@/lib/api";
+import { applyActions } from "@/lib/maplibre";
+import { useToast } from "@/state/ToastContext";
+import Header from "@/components/Header";
+import SettingsPanel from "@/components/SettingsPanel";
+import MapView from "@/components/MapView";
+import Sidebar from "@/components/Sidebar";
+import AITab from "@/components/chat/AITab";
+import PalettesTab from "@/components/tabs/PalettesTab";
+import InspectorTab from "@/components/tabs/InspectorTab";
+import ExportTab from "@/components/tabs/ExportTab";
+import type {
+  Health,
+  MapAction,
+  MapStyle,
+  Overview,
+  Palette,
+  Settings,
+  TabId,
+  ToolResult,
+} from "@/lib/types";
+
+type ApplyResponse = {
+  actions?: MapAction[];
+  result?: ToolResult;
+  overview?: Overview;
+};
+
+type LoadResponse = {
+  ok?: boolean;
+  name?: string;
+  actions?: MapAction[];
+};
 
 export default function App() {
   const { push: toast } = useToast();
 
   const [ready, setReady] = useState(false);
-  const [fatal, setFatal] = useState(null);
+  const [fatal, setFatal] = useState<string | null>(null);
 
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [provider, setProvider] = useState("ollama");
   const [model, setModel] = useState("");
-  const [models, setModels] = useState([]);
-  const [baseStyles, setBaseStyles] = useState([]);
-  const [palettes, setPalettes] = useState([]);
-  const [style, setStyle] = useState(null);
-  const [overview, setOverview] = useState(null);
-  const [selectedLayer, setSelectedLayer] = useState(null);
-  const [activeTab, setActiveTab] = useState("ai");
+  const [models, setModels] = useState<string[]>([]);
+  const [baseStyles, setBaseStyles] = useState<string[]>([]);
+  const [palettes, setPalettes] = useState<Palette[]>([]);
+  const [style, setStyle] = useState<MapStyle | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [selectedLayer, setSelectedLayer] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("ai");
   const [showSettings, setShowSettings] = useState(false);
-  const [health, setHealth] = useState(null);
+  const [health, setHealth] = useState<Health | null>(null);
 
-  const mapRef = useRef(null);
-  const sendPromptRef = useRef(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const sendPromptRef = useRef<((text: string) => void) | null>(null);
 
   const currentBase = (style?.name || "").split(":")[1] || "";
   const styleName = style?.name || "";
 
   /* ---------------------------------------------------------- map sync --- */
-  const apply = useCallback((actions) => {
+  const apply = useCallback((actions: MapAction[]) => {
     if (mapRef.current) applyActions(mapRef.current, actions);
   }, []);
 
   const refreshStyle = useCallback(async () => {
     try {
       const [s, o] = await Promise.all([
-        api("/api/session/style"),
-        api("/api/session/overview").catch(() => null),
+        api<MapStyle>("/api/session/style"),
+        api<Overview>("/api/session/overview").catch(() => null),
       ]);
       setStyle(s);
       if (o) setOverview(o);
-    } catch (e) {
+    } catch {
       /* transient; keep last good state */
     }
   }, []);
 
   const applyAndSync = useCallback(
-    async (actions) => {
+    async (actions: MapAction[]) => {
       apply(actions);
       await refreshStyle();
     },
-    [apply, refreshStyle]
+    [apply, refreshStyle],
   );
 
   /* ----------------------------------------------------- status + models --- */
   const refreshStatus = useCallback(async () => {
     try {
-      setHealth(await api("/api/health"));
-    } catch (e) {
+      setHealth(await api<Health>("/api/health"));
+    } catch {
       setHealth(null);
     }
   }, []);
 
-  const refreshModels = useCallback(async (p) => {
+  const refreshModels = useCallback(async (p: string) => {
     try {
-      const r = await api(`/api/models?provider=${encodeURIComponent(p)}`);
+      const r = await api<{ models?: string[] }>(`/api/models?provider=${encodeURIComponent(p)}`);
       setModels(r.models || []);
-    } catch (e) {
+    } catch {
       setModels([]);
     }
   }, []);
@@ -86,11 +109,11 @@ export default function App() {
     (async () => {
       try {
         const [s, cfg, pal, ov, h] = await Promise.all([
-          api("/api/session/style"),
-          api("/api/settings"),
-          api("/api/palettes"),
-          api("/api/session/overview").catch(() => null),
-          api("/api/health").catch(() => null),
+          api<MapStyle>("/api/session/style"),
+          api<Settings>("/api/settings"),
+          api<{ palettes?: Palette[] }>("/api/palettes"),
+          api<Overview>("/api/session/overview").catch(() => null),
+          api<Health>("/api/health").catch(() => null),
         ]);
         setStyle(s);
         setSettings(cfg);
@@ -98,14 +121,12 @@ export default function App() {
         setBaseStyles(cfg.baseStyles || []);
         const prov = cfg.provider || "ollama";
         setProvider(prov);
-        setModel(
-          prov === "ollama" ? cfg.ollama?.model || "" : cfg.openai?.model || ""
-        );
+        setModel(prov === "ollama" ? cfg.ollama?.model || "" : cfg.openai?.model || "");
         setOverview(ov);
         setHealth(h);
         refreshModels(prov);
       } catch (e) {
-        setFatal(e.message || String(e));
+        setFatal(e instanceof Error ? e.message : String(e));
       } finally {
         setReady(true);
       }
@@ -113,128 +134,133 @@ export default function App() {
   }, [refreshModels]);
 
   /* ------------------------------------------------------------- handlers --- */
-  function handleBaseChange(name) {
+  function handleBaseChange(name: string) {
     if (!name) return;
     (async () => {
       try {
-        const r = await api("/api/session/load", { method: "POST", body: { name } });
+        const r = await api<LoadResponse>("/api/session/load", {
+          method: "POST",
+          body: { name },
+        });
         if (r.actions?.[0]?.style) setStyle(r.actions[0].style);
-        applyAndSync(r.actions);
+        applyAndSync(r.actions || []);
         setSelectedLayer(null);
         toast(`Loaded base map: ${name}`, "ok");
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function handleProviderChange(p) {
+  function handleProviderChange(p: string) {
     const norm = p === "openai_compatible" ? "openai" : "ollama";
     setProvider(norm);
     refreshModels(norm);
     refreshStatus();
   }
 
-  function handleApplyPalette(name) {
+  function handleApplyPalette(name: string) {
     (async () => {
       try {
-        const r = await api("/api/apply", {
+        const r = await api<ApplyResponse>("/api/apply", {
           method: "POST",
           body: { name: "apply_palette", args: { name } },
         });
-        applyAndSync(r.actions);
+        applyAndSync(r.actions || []);
         toast(`Applied ${name}`, "ok");
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function handleToggleVis(layerId, visible) {
+  function handleToggleVis(layerId: string, visible: boolean) {
     (async () => {
       try {
-        const r = await api("/api/apply", {
+        const r = await api<ApplyResponse>("/api/apply", {
           method: "POST",
           body: { name: "set_visibility", args: { layer_id: layerId, visible } },
         });
-        applyAndSync(r.actions);
+        applyAndSync(r.actions || []);
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function handleApplyProp(layerId, prop, value) {
+  function handleApplyProp(layerId: string, prop: string, value: string | number) {
     (async () => {
       try {
-        const r = await api("/api/apply", {
+        const r = await api<ApplyResponse>("/api/apply", {
           method: "POST",
           body: { name: "update_layer", args: { layer_id: layerId, paint: { [prop]: value } } },
         });
         if (r.result && r.result.ok === false) {
-          toast(r.result.error || "failed", "err");
+          toast(String(r.result.error || "failed"), "err");
           return;
         }
-        applyAndSync(r.actions);
+        applyAndSync(r.actions || []);
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function handleSaveSettings(body) {
+  function handleSaveSettings(body: Record<string, unknown>) {
     (async () => {
       try {
-        const s = await api("/api/settings", { method: "POST", body });
+        const s = await api<Settings>("/api/settings", { method: "POST", body });
         setSettings(s);
         refreshStyle();
         refreshStatus();
         setShowSettings(false);
         toast("Settings saved", "ok");
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function handleQuick(prompt) {
+  function handleQuick(prompt: string) {
     setActiveTab("ai");
     setTimeout(() => sendPromptRef.current?.(prompt), 0);
   }
 
-  function handleImport(styleJson, sourceName) {
+  function handleImport(styleJson: MapStyle, sourceName: string) {
     (async () => {
       try {
         const name = sourceName ? sourceName.replace(/\.json$/i, "") : undefined;
-        const r = await api("/api/session/import", {
+        const r = await api<LoadResponse>("/api/session/import", {
           method: "POST",
           body: { style: styleJson, name },
         });
         if (r.actions?.[0]?.style) setStyle(r.actions[0].style);
-        applyAndSync(r.actions);
+        applyAndSync(r.actions || []);
         setSelectedLayer(null);
         toast("Imported style from JSON", "ok");
       } catch (e) {
-        toast(e.message, "err");
+        toast(e instanceof Error ? e.message : String(e), "err");
       }
     })();
   }
 
-  function registerSend(fn) {
+  function registerSend(fn: (text: string) => void) {
     sendPromptRef.current = fn;
   }
 
   /* -------------------------------------------------------------- status --- */
-  const status = useMemo(() => {
+  const status = useMemo<{ s: "ok" | "warn" | "off"; title: string }>(() => {
     if (provider === "ollama") {
       if (health?.ollama?.ok)
         return {
           s: "ok",
-          title: `Ollama ${health.ollama.version || ""} \u00b7 ${health.ollama.models?.length || 0} model(s)`.trim(),
+          title:
+            `Ollama ${health.ollama.version || ""} \u00b7 ${health.ollama.models?.length || 0} model(s)`.trim(),
         };
       return {
         s: "off",
-        title: `Ollama not reachable at ${health?.ollama?.baseUrl || settings?.ollama?.baseUrl || ""}`.trim(),
+        title:
+          `Ollama not reachable at ${health?.ollama?.baseUrl || settings?.ollama?.baseUrl || ""}`.trim(),
       };
     }
     if (settings?.openai?.hasKey) return { s: "ok", title: "OpenAI-compatible (key set)" };
@@ -291,7 +317,7 @@ export default function App() {
           )}
           {activeTab === "inspector" && (
             <InspectorTab
-              overview={overview}
+              overview={overview || {}}
               selectedLayer={selectedLayer}
               onSelectLayer={setSelectedLayer}
               onClearSelection={() => setSelectedLayer(null)}
@@ -303,7 +329,7 @@ export default function App() {
         </Sidebar>
 
         <MapView
-          initialStyle={style}
+          initialStyle={style as MapStyle}
           onMap={(m) => (mapRef.current = m)}
           styleName={styleName}
           onQuick={handleQuick}
@@ -321,18 +347,18 @@ function LoadingScreen() {
         <Compass size={28} className="animate-pulse text-white" />
       </div>
       <div className="flex flex-col items-center gap-1">
-        <span className="text-sm font-medium text-ink-100">EarthIQ</span>
+        <span className="text-sm font-medium text-ink-100">EarthIQ Basemap</span>
         <span className="text-xs text-ink-400">Preparing your base map\u2026</span>
       </div>
     </div>
   );
 }
 
-function ErrorScreen({ message }) {
+function ErrorScreen({ message }: { message: string }) {
   return (
     <div className="flex h-full items-center justify-center bg-ink-950 px-6">
       <div className="max-w-md rounded-2xl border border-rose-500/40 bg-rose-500/10 p-6 text-center">
-        <div className="mb-2 text-sm font-semibold text-rose-200">Could not start EarthIQ</div>
+        <div className="mb-2 text-sm font-semibold text-rose-200">Could not start EarthIQ Basemap</div>
         <p className="text-sm text-rose-200/80">{message}</p>
         <p className="mt-3 text-xs text-ink-400">
           Make sure the backend is running (`./run.sh`) and try reloading.

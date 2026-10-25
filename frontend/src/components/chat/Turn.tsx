@@ -1,15 +1,8 @@
-import {
-  Bot,
-  BrainCircuit,
-  Wrench,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-} from "lucide-react";
-import { cn, shortArgs, summarizeResult } from "../../lib/utils";
+import { Bot, BrainCircuit, CheckCircle2, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { cn, shortArgs, summarizeResult } from "@/lib/utils";
+import type { ToolResult, Turn as TurnType } from "@/lib/types";
 
-function ThinkingBlock({ note, active }) {
+function ThinkingBlock({ note, active }: { note?: string; active?: boolean }) {
   return (
     <div className="flex items-center gap-2 text-xs text-ink-300">
       {active ? (
@@ -22,13 +15,13 @@ function ThinkingBlock({ note, active }) {
   );
 }
 
-function TextBlock({ content, streaming }) {
+function TextBlock({ content, streaming }: { content?: string; streaming?: boolean }) {
   if (!content) return null;
   return (
     <div
       className={cn(
         "whitespace-pre-wrap break-words text-sm leading-relaxed text-ink-100",
-        streaming && "stream-caret"
+        streaming && "stream-caret",
       )}
     >
       {content}
@@ -36,14 +29,24 @@ function TextBlock({ content, streaming }) {
   );
 }
 
-function ToolBlock({ name, args, status, result }) {
+function ToolBlock({
+  name,
+  args,
+  status,
+  result,
+}: {
+  name?: string;
+  args?: Record<string, unknown>;
+  status?: string;
+  result?: ToolResult;
+}) {
   const Icon = status === "running" ? Loader2 : status === "done" ? CheckCircle2 : XCircle;
   const tone =
     status === "done"
       ? "border-emerald-500/40 text-emerald-300"
       : status === "fail"
-      ? "border-rose-500/50 text-rose-300"
-      : "border-line text-ink-300";
+        ? "border-rose-500/50 text-rose-300"
+        : "border-line text-ink-300";
 
   return (
     <div className={cn("rounded-lg border bg-ink-950/60 px-3 py-2", tone)}>
@@ -51,9 +54,7 @@ function ToolBlock({ name, args, status, result }) {
         <Icon size={15} className={cn(status === "running" && "animate-spin")} />
         <span className="font-mono text-xs font-medium text-ink-100">{name}</span>
         {args && Object.keys(args).length > 0 && (
-          <span className="truncate font-mono text-[11px] text-ink-300">
-            {shortArgs(args)}
-          </span>
+          <span className="truncate font-mono text-[11px] text-ink-300">{shortArgs(args)}</span>
         )}
       </div>
       {status !== "running" && (
@@ -65,7 +66,7 @@ function ToolBlock({ name, args, status, result }) {
   );
 }
 
-function ErrorBlock({ message }) {
+function ErrorBlock({ message }: { message?: string }) {
   return (
     <div className="flex items-start gap-2 rounded-lg border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
       <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -75,9 +76,10 @@ function ErrorBlock({ message }) {
 }
 
 /** Render a single assistant turn as an ordered "what happened" timeline. */
-export default function Turn({ turn }) {
+export default function Turn({ turn }: { turn: TurnType }) {
   const running = turn.status === "running";
-  const lastTextIdx = [...turn.parts]
+  const parts = turn.parts || [];
+  const lastTextIdx = [...parts]
     .map((p, i) => ({ p, i }))
     .filter(({ p }) => p.kind === "text")
     .pop()?.i;
@@ -89,7 +91,7 @@ export default function Turn({ turn }) {
           <Bot size={13} className="text-white" />
         </div>
         <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-300">
-          EarthIQ
+          EarthIQ Basemap
         </span>
         {running && (
           <span className="flex items-center gap-1 text-[11px] text-ink-300">
@@ -100,15 +102,15 @@ export default function Turn({ turn }) {
       </div>
 
       <div className="ml-1 flex flex-col gap-2 border-l border-line pl-3">
-        {turn.parts.length === 0 && running && <ThinkingBlock note="thinking…" active />}
-        {turn.parts.map((part, i) => {
+        {parts.length === 0 && running && <ThinkingBlock note="thinking…" active />}
+        {parts.map((part, i) => {
           switch (part.kind) {
             case "thinking":
               return (
                 <ThinkingBlock
                   key={part.id}
                   note={part.note}
-                  active={running && i === 0 && turn.parts[1]?.kind !== "text"}
+                  active={running && i === 0 && parts[1]?.kind !== "text"}
                 />
               );
             case "text":

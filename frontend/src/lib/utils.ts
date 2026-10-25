@@ -1,17 +1,19 @@
+import type { MapLayer, ToolResult } from "@/lib/types";
+
 /** Join truthy class names. */
-export function cn(...parts) {
+export function cn(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
 let _id = 0;
 /** Tiny unique id generator for React keys / chat blocks. */
-export function uid(prefix = "id") {
+export function uid(prefix = "id"): string {
   _id += 1;
   return `${prefix}_${Date.now().toString(36)}_${_id}`;
 }
 
 /** Coerce a CSS colour (hex / rgb / rgba / hsl) to a #rrggbb string. */
-export function toHex(v) {
+export function toHex(v: unknown): string {
   if (typeof v !== "string") return "#888888";
   if (v.startsWith("#")) {
     if (v.length === 7) return v;
@@ -21,44 +23,41 @@ export function toHex(v) {
   const m = v.match(/rgba?\(([^)]+)\)/);
   if (m) {
     const [r, g, b] = m[1].split(",").map((s) => parseInt(s.trim(), 10));
-    return (
-      "#" +
-      [r, g, b].map((x) => ((x || 0).toString(16)).padStart(2, "0")).join("")
-    );
+    return "#" + [r, g, b].map((x) => (x || 0).toString(16).padStart(2, "0")).join("");
   }
   return "#888888";
 }
 
 /** Compact, human-readable tool arguments for the chat timeline. */
-export function shortArgs(a) {
+export function shortArgs(a: Record<string, unknown> | null | undefined): string {
   if (!a || Object.keys(a).length === 0) return "";
   return Object.entries(a)
-    .map(([k, v]) => `${k}=${typeof v === "object" ? "…" : v}`)
+    .map(([k, v]) => `${k}=${typeof v === "object" ? "…" : String(v)}`)
     .join(" ");
 }
 
 /** Summarise a tool result into a short status line. */
-export function summarizeResult(r) {
+export function summarizeResult(r: ToolResult | null | undefined): string {
   if (!r) return "";
-  if (r.ok === false) return r.error || "failed";
-  if (Array.isArray(r.applied)) return `${r.applied.length} prop(s)`;
-  if (r.appliedProps) return `${r.appliedProps} prop(s)`;
-  if (r.loaded) return `loaded ${r.loaded}`;
-  if (r.palette) return r.palette;
-  if (r.added) return `added ${r.added}`;
-  if (r.removed) return `removed ${r.removed}`;
-  if (r.moved != null) return `moved to ${r.index}`;
-  if (r.layer) return r.layer;
-  if (r.background) return `bg ${r.background}`;
+  if (r.ok === false) return String(r.error || "failed");
+  if (Array.isArray(r.applied)) return `${(r.applied as unknown[]).length} prop(s)`;
+  if (r.appliedProps) return `${String(r.appliedProps)} prop(s)`;
+  if (r.loaded) return `loaded ${String(r.loaded)}`;
+  if (r.palette) return String(r.palette);
+  if (r.added) return `added ${String(r.added)}`;
+  if (r.removed) return `removed ${String(r.removed)}`;
+  if (r.moved != null) return `moved to ${String(r.index)}`;
+  if (r.layer) return String(r.layer);
+  if (r.background) return `bg ${String(r.background)}`;
   return `${Object.keys(r).length} field(s)`;
 }
 
 /** Pick the most useful editable paint properties for a layer (inspector). */
-export function layerPropsFor(layer) {
-  const t = layer.type;
-  const paint = layer.paint || {};
-  const out = [];
-  const add = (prop, kind) => {
+export function layerPropsFor(layer: MapLayer): { prop: string; kind: "color" | "number" }[] {
+  const t = layer.type as string;
+  const paint = (layer.paint || {}) as Record<string, unknown>;
+  const out: { prop: string; kind: "color" | "number" }[] = [];
+  const add = (prop: string, kind: "color" | "number") => {
     if (!out.find((x) => x.prop === prop)) out.push({ prop, kind });
   };
   if (t === "background") {
@@ -84,6 +83,6 @@ export function layerPropsFor(layer) {
 }
 
 /** Capitalise a base style / palette slug for display. */
-export function titleCase(s) {
+export function titleCase(s: string | null | undefined): string {
   return (s || "").replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

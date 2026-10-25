@@ -1,28 +1,40 @@
 import { Eye, EyeOff, Layers, SlidersHorizontal, X } from "lucide-react";
-import { cn, layerPropsFor, toHex } from "../../lib/utils";
+import { cn, layerPropsFor, toHex } from "@/lib/utils";
+import type { MapLayer } from "@/lib/types";
 
 const SWATCHES = ["#ffffff", "#111111", "#22d3ee", "#f0abfc", "#f0a92b", "#57cc77", "#e5484d"];
 
-function LayerRow({ layer, selected, onSelect, onToggleVis }) {
+function LayerRow({
+  layer,
+  selected,
+  onSelect,
+  onToggleVis,
+}: {
+  layer: MapLayer;
+  selected: boolean;
+  onSelect?: (id: string) => void;
+  onToggleVis?: (id: string, visible: boolean) => void;
+}) {
+  const id = layer.id || "";
   return (
     <div
-      onClick={() => onSelect(layer.id)}
+      onClick={() => onSelect?.(id)}
       className={cn(
         "flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] transition",
-        selected ? "bg-brand-500/15 ring-1 ring-inset ring-brand-500/40" : "hover:bg-ink-800"
+        selected ? "bg-brand-500/15 ring-1 ring-inset ring-brand-500/40" : "hover:bg-ink-800",
       )}
     >
       <button
         onClick={(e) => {
           e.stopPropagation();
-          onToggleVis(layer.id, !layer.visible);
+          onToggleVis?.(id, !layer.visible);
         }}
         title="Toggle visibility"
         className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-ink-300 transition hover:bg-white/10 hover:text-ink-100"
       >
         {layer.visible ? <Eye size={15} /> : <EyeOff size={15} className="opacity-60" />}
       </button>
-      <span className="flex-1 truncate font-mono text-xs text-ink-100">{layer.id}</span>
+      <span className="flex-1 truncate font-mono text-xs text-ink-100">{id}</span>
       <span className="shrink-0 rounded border border-line bg-ink-900 px-1.5 py-0.5 text-[10px] text-ink-300">
         {layer.type}
       </span>
@@ -30,7 +42,17 @@ function LayerRow({ layer, selected, onSelect, onToggleVis }) {
   );
 }
 
-function PropRow({ prop, kind, value, onChange }) {
+function PropRow({
+  prop,
+  kind,
+  value,
+  onChange,
+}: {
+  prop: string;
+  kind: "color" | "number";
+  value: unknown;
+  onChange: (v: string | number) => void;
+}) {
   return (
     <div className="mb-2.5 flex items-center gap-2">
       <label className="flex-1 truncate font-mono text-[11px] text-ink-300">{prop}</label>
@@ -58,7 +80,7 @@ function PropRow({ prop, kind, value, onChange }) {
         <input
           type="number"
           step="0.5"
-          value={value != null ? value : ""}
+          value={value != null ? String(value) : ""}
           onChange={(e) => {
             if (e.target.value === "") return;
             const n = Number(e.target.value);
@@ -71,6 +93,15 @@ function PropRow({ prop, kind, value, onChange }) {
   );
 }
 
+type InspectorTabProps = {
+  overview?: { layers?: MapLayer[] };
+  selectedLayer?: string | null;
+  onSelectLayer?: (id: string) => void;
+  onClearSelection?: () => void;
+  onToggleVis?: (layerId: string, visible: boolean) => void;
+  onApplyProp?: (layerId: string, prop: string, value: string | number) => void;
+};
+
 export default function InspectorTab({
   overview = { layers: [] },
   selectedLayer = null,
@@ -78,7 +109,7 @@ export default function InspectorTab({
   onClearSelection,
   onToggleVis,
   onApplyProp,
-}) {
+}: InspectorTabProps) {
   const layers = overview.layers || [];
   const selected = layers.find((l) => l.id === selectedLayer);
 
@@ -109,9 +140,7 @@ export default function InspectorTab({
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <SlidersHorizontal size={15} className="text-glow" />
-              <span className="font-mono text-xs font-semibold text-ink-100">
-                {selected.id}
-              </span>
+              <span className="font-mono text-xs font-semibold text-ink-100">{selected.id}</span>
               <span className="text-[11px] text-ink-500">
                 · {selected["source-layer"] || selected.type}
               </span>
@@ -135,7 +164,7 @@ export default function InspectorTab({
                 prop={p.prop}
                 kind={p.kind}
                 value={selected.paint && selected.paint[p.prop]}
-                onChange={(v) => onApplyProp(selected.id, p.prop, v)}
+                onChange={(v) => onApplyProp?.(selected.id || "", p.prop, v)}
               />
             ));
           })()}

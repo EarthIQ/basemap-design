@@ -1,4 +1,4 @@
-"""The EarthIQ agent: a tool-calling loop that yields streamable events.
+"""The EarthIQ Basemap agent: a tool-calling loop that yields streamable events.
 
 The session dict carries the mutable design state:
 
@@ -77,14 +77,16 @@ def run_agent(session: dict[str, Any], user_message: str):
 
     style = session["style"]
     history: list[dict] = session.setdefault("history", [])
-    history.append({"role": "user", "content": user_message})
-    trim_history(history)
+    with settings.SESSION_LOCK:
+        history.append({"role": "user", "content": user_message})
+        trim_history(history)
 
     messages: list[dict] = [{"role": "system", "content": build_system_prompt()}] + list(history)
 
     def push(msg: dict) -> None:
         messages.append(msg)
-        history.append(msg)
+        with settings.SESSION_LOCK:
+            history.append(msg)
 
     yield {"type": "start", "model": config.get("model"), "provider": config.get("provider")}
 
@@ -117,7 +119,8 @@ def run_agent(session: dict[str, Any], user_message: str):
                 args = tc.get("arguments") or {}
                 yield {"type": "tool_call", "name": name, "arguments": args}
 
-                result, actions = design.execute_tool(style, name, args)
+                with settings.SESSION_LOCK:
+                    result, actions = design.execute_tool(style, name, args)
 
                 # Give the model a compact, serialisable result to read back.
                 # Layer-lookup results carry the full list of real ids so the

@@ -1,9 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
+data/
 data/styles/*.raw.json
 node_modules/
 frontend/dist/
 .vite
 npm-debug.log*
 .DS_Store
+.env
+*.env

@@ -1,12 +1,16 @@
 import { useState } from "react";
+import type { InputHTMLAttributes, ReactNode } from "react";
 import { X, Save } from "lucide-react";
-import Button from "./ui/Button.jsx";
-import { cn } from "../lib/utils";
+import Button from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
+import type { Settings } from "@/lib/types";
 
 const fieldCls =
   "rounded-lg border border-line bg-ink-850 px-3 py-2 text-sm text-ink-100 outline-none transition focus:border-brand-500";
 
-function Labeled({ label, ...rest }) {
+type LabeledProps = InputHTMLAttributes<HTMLInputElement> & { label: string };
+
+function Labeled({ label, ...rest }: LabeledProps) {
   return (
     <label className="flex flex-col gap-1.5 text-xs text-ink-300">
       <span>{label}</span>
@@ -15,7 +19,15 @@ function Labeled({ label, ...rest }) {
   );
 }
 
-function SelectField({ label, children, className }) {
+function SelectField({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <label className={cn("flex flex-col gap-1.5 text-xs text-ink-300", className)}>
       <span>{label}</span>
@@ -23,6 +35,17 @@ function SelectField({ label, children, className }) {
     </label>
   );
 }
+
+type SettingsPanelProps = {
+  settings: Settings;
+  onSave: (body: Record<string, unknown>) => void;
+  onClose: () => void;
+  provider?: string;
+  onProviderChange?: (p: string) => void;
+  model?: string;
+  onModelChange?: (m: string) => void;
+  models?: string[];
+};
 
 export default function SettingsPanel({
   settings,
@@ -33,7 +56,7 @@ export default function SettingsPanel({
   model = "",
   onModelChange,
   models = [],
-}) {
+}: SettingsPanelProps) {
   const [tileBaseUrl, setTileBaseUrl] = useState(settings.tileBaseUrl || "");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState(settings.ollama?.baseUrl || "");
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState(settings.openai?.baseUrl || "");
@@ -86,13 +109,13 @@ export default function SettingsPanel({
         </SelectField>
         <SelectField label="Model" className="md:col-span-2">
           <input
-            list="earthiq-models"
+            list="basemap-models"
             value={model}
             onChange={(e) => onModelChange?.(e.target.value)}
             placeholder={provider === "ollama" ? "e.g. qwen2.5:14b" : "e.g. gpt-4.1-mini"}
             className={fieldCls}
           />
-          <datalist id="earthiq-models">
+          <datalist id="basemap-models">
             {models.map((m) => (
               <option key={m} value={m} />
             ))}

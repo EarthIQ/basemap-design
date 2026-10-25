@@ -1,7 +1,14 @@
 import { Palette, Layers, Check } from "lucide-react";
-import { titleCase } from "../../lib/utils";
+import { titleCase } from "@/lib/utils";
+import type { Palette as PaletteType } from "@/lib/types";
 
-function PaletteCard({ palette, onApply }) {
+function PaletteCard({
+  palette,
+  onApply,
+}: {
+  palette: PaletteType;
+  onApply?: (name: string) => void;
+}) {
   const swatches = (palette.swatches || []).slice(0, 8);
   return (
     <div className="group flex flex-col gap-2 rounded-xl border border-line bg-ink-850 p-3 transition hover:border-brand-500/50">
@@ -12,12 +19,10 @@ function PaletteCard({ palette, onApply }) {
       </div>
       <div className="flex flex-1 flex-col">
         <span className="text-sm font-semibold text-ink-100">{palette.label}</span>
-        <span className="mt-0.5 text-[11px] leading-snug text-ink-300">
-          {palette.description}
-        </span>
+        <span className="mt-0.5 text-[11px] leading-snug text-ink-300">{palette.description}</span>
       </div>
       <button
-        onClick={() => onApply(palette.name)}
+        onClick={() => onApply?.(palette.name)}
         className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-ink-750 px-3 py-1.5 text-xs font-medium text-ink-200 transition hover:border-brand-500/60 hover:bg-brand-500/15 hover:text-ink-100"
       >
         <Check size={13} />
@@ -27,13 +32,21 @@ function PaletteCard({ palette, onApply }) {
   );
 }
 
+type PalettesTabProps = {
+  palettes?: PaletteType[];
+  onApply?: (name: string) => void;
+  baseStyles?: string[];
+  currentBase?: string;
+  onLoadBase?: (name: string) => void;
+};
+
 export default function PalettesTab({
   palettes = [],
   onApply,
   baseStyles = [],
   currentBase = "",
   onLoadBase,
-}) {
+}: PalettesTabProps) {
   return (
     <div className="flex-1 space-y-5 overflow-y-auto p-4">
       <div>
@@ -62,7 +75,7 @@ export default function PalettesTab({
           {baseStyles.map((n) => (
             <button
               key={n}
-              onClick={() => onLoadBase(n)}
+              onClick={() => onLoadBase?.(n)}
               className={
                 "rounded-lg border px-3.5 py-2 text-sm capitalize transition " +
                 (currentBase === n

@@ -1,0 +1,51 @@
+# EarthIQ Basemap — one-command local stack.
+#
+#   docker compose up --build
+#
+# then open http://127.0.0.1:8000
+#
+# Ollama running on the Docker host is reachable from the container at
+# http://host.docker.internal:11444 (the extra_hosts entry makes that name
+# resolve on Linux too). For an OpenAI-compatible endpoint instead, set
+# OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL (see server/settings.py).
+
+services:
+  basemap:
+    build: .
+    image: basemap:latest
+    container_name: basemap
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Not needed when the UI is served same-origin (the default). Set a
+      # comma-separated list only if you host the frontend elsewhere, e.g.
+      # https://maps.example.com,https://127.0.0.1:5173
+      EARTHIQ_CORS_ORIGINS: ${EARTHIQ_CORS_ORIGINS:-}
+      # Local LLM: Ollama on the Docker host.
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11444}
+      EARTHIQ_OLLAMA_MODEL: ${EARTHIQ_OLLAMA_MODEL:-qwen3.8:27b}
+      # Vector tiles / base styles (default: public OpenFreeMap).
+      EARTHIQ_TILE_BASE_URL: ${EARTHIQ_TILE_BASE_URL:-https://tiles.openfreemap.org}
+      # Optional: OpenAI-compatible provider.
+      # OPENAI_BASE_URL: https://openrouter.ai/api/v1
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # OPENAI_MODEL: openai/gpt-4.1-mini
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Persist cached base-map style JSONs across image rebuilds.
+      - basemap-styles:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  basemap-styles:

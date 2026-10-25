@@ -1,5 +1,9 @@
+import type { SSEEvent } from "@/lib/types";
+
+type ApiOptions = Omit<RequestInit, "body"> & { body?: unknown };
+
 /** Thin JSON fetch helper with consistent error messages. */
-export async function api(path, opts = {}) {
+export async function api<T = unknown>(path: string, opts: ApiOptions = {}): Promise<T> {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json" },
     ...opts,
@@ -8,31 +12,35 @@ export async function api(path, opts = {}) {
   if (!res.ok) {
     let detail = "";
     try {
-      detail = (await res.json()).detail || "";
-    } catch (e) {
+      detail = ((await res.json()) as { detail?: string }).detail || "";
+    } catch {
       /* not JSON */
     }
     throw new Error([res.status, res.statusText, detail].filter(Boolean).join(" ").trim());
   }
-  return res.json();
+  return (await res.json()) as T;
 }
 
 /**
  * POST a chat turn and yield parsed SSE events as an async generator, so the
  * UI can render assistant text token-by-token as it arrives.
  */
-export async function* streamChat({ message, provider, model }) {
+export async function* streamChat(args: {
+  message: string;
+  provider?: string;
+  model?: string;
+}): AsyncGenerator<SSEEvent, void, unknown> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, provider, model }),
+    body: JSON.stringify(args),
   });
 
   if (!res.ok || !res.body) {
     let detail = "";
     try {
-      detail = (await res.json()).detail || res.statusText;
-    } catch (e) {
+      detail = ((await res.json()) as { detail?: string }).detail || res.statusText;
+    } catch {
       detail = res.statusText || "request failed";
     }
     throw new Error(detail || `Chat request failed (${res.status})`);
@@ -47,7 +55,7 @@ export async function* streamChat({ message, provider, model }) {
     if (done) break;
     buf += dec.decode(value, { stream: true });
 
-    let idx;
+    let idx: number;
     while ((idx = buf.indexOf("\n\n")) >= 0) {
       const frame = buf.slice(0, idx);
       buf = buf.slice(idx + 2);
@@ -56,8 +64,8 @@ export async function* streamChat({ message, provider, model }) {
       const payload = line.slice(5).trim();
       if (payload === "[DONE]") return;
       try {
-        yield JSON.parse(payload);
-      } catch (e) {
+        yield JSON.parse(payload) as SSEEvent;
+      } catch {
         /* ignore malformed frames */
       }
     }

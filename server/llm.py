@@ -45,7 +45,7 @@ class _Client:
         if cls._inst is None:
             cls._inst = httpx.Client(
                 timeout=httpx.Timeout(settings.LLM_TIMEOUT, connect=10.0),
-                headers={"User-Agent": "earthiq/0.2 (+base-map-designer)"},
+                headers={"User-Agent": "earthiq-basemap/0.2 (+base-map-designer)"},
             )
         return cls._inst
 

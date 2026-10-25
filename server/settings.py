@@ -1,4 +1,4 @@
-"""Runtime configuration and defaults for the EarthIQ base map designer.
+"""Runtime configuration and defaults for the EarthIQ Basemap base map designer.
 
 Everything here can be overridden at runtime via the /api/settings endpoint
 or environment variables, which is what allows the app to point at a
@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -65,6 +66,14 @@ ACTION_LINE_RE = re.compile(
 # HTTP timeout (seconds) for a single LLM request. Local small models can be
 # slow to "think", so this is generous.
 LLM_TIMEOUT = float(os.environ.get("EARTHIQ_LLM_TIMEOUT", "180"))
+
+# ---------------------------------------------------------------------------
+# Session
+# ---------------------------------------------------------------------------
+# Shared lock guarding the in-memory session style. Both main.py (HTTP
+# endpoints) and agent.py (the tool-calling loop) mutate the same dict, so
+# every mutation must happen under this lock.
+SESSION_LOCK = threading.Lock()
 
 
 def default_settings() -> dict:
